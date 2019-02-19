@@ -2,9 +2,7 @@
 title: "ESM 244 Assignment 2"
 author: "Danny Ettelson"
 date: "2/19/2019"
-output:
-  html_document: default
-  pdf_document: default
+output: html_document
 ---
 
 ```{r setup, include=FALSE}
@@ -15,18 +13,19 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r loadlib, message=FALSE, warning=FALSE}
 
 library(tidyverse)
+library(stargazer)
 library(lubridate)
-
+library(boot)
+library(knitr)
 cetaceans <- read_csv("captive_cetacean.csv")
-fish_catch <- read_csv("fish_catch.csv")
 
 ```
 
-###Task 1: Data wrangling and visualization - cetaceans in captivity
+### Task 1: Data wrangling and visualization - cetaceans in captivity
 
 
 
-```{r captivity, fig.align='center', fig.cap="Number of cetaceans born in captivity 1950 - 2018. Births where artificial insemination was used are shown in blue", message=FALSE, warning=FALSE}
+```{r captivity, fig.align='center', fig.cap="\\label{fig:figs}Number of cetaceans born in captivity 1950 - 2018. Births where artificial insemination was used are shown in blue", message=FALSE, warning=FALSE}
 
 
 cetaceans$birthYear <- as.numeric(cetaceans$birthYear)
@@ -55,7 +54,7 @@ panel.background = element_blank(), axis.line = element_line(colour = "black"), 
 
 ```
 
-```{r}
+```{r releases,fig.align='center', fig.cap="\\label{fig:figs}Release of cetaceans from captivity colored by species.", message=FALSE, warning=FALSE}
 
 cetaceans$statusDate <- mdy(cetaceans$statusDate)
 
@@ -77,3 +76,174 @@ panel.background = element_blank(), axis.line = element_line(colour = "black"), 
 
 ```
 
+### Task 2: Parameter Estimation – Wild Fish Catch
+
+
+```{r message=FALSE, warning=FALSE, fig.align='center'}
+fish_catch <- read_csv("fish_catch.csv")
+
+fish_catch <- drop_na(fish_catch)
+colnames(fish_catch) <- c("year", "wild", "farmed", "total")
+fish_catch <-  fish_catch[-1, ]   
+fish_catch$year <- as.numeric(fish_catch$year)
+fish_catch$wild <- as.numeric(fish_catch$wild)
+
+fish_catch <- fish_catch %>% 
+  mutate(Year_from_1950 = year-1950)
+
+ggplot(fish_catch, aes(x = year)) +
+  geom_point(aes(y = wild)) +
+  theme_classic()
+
+
+```
+
+The data looks like it might fit a logistic growth model fairly well. Catch seems to increase exponentially initially in the series and then level off to a value around 90 million tons
+
+$N(t) = \frac{A}{(1+Be^{-rt})}$
+$B = \frac{(K-N0)}{N0}$
+
+Estimate of K = 90
+Estimate of N0 = 17
+Estimate of B = 4.3
+
+
+exponential before 1970, or time = 20
+
+```{r message=FALSE, warning=FALSE, fig.align='center'}
+exponential <- fish_catch %>% 
+  filter(Year_from_1950<20)
+
+ggplot(exponential, aes(x = year, y = log(wild))) +
+  geom_point()
+
+lm(log(wild) ~ year , data = fish_catch) #r ~ 0.025
+
+```
+
+ r ~ 0.025
+
+
+```{r}
+
+
+fish_fit <- nls(wild ~ A/(1+B*exp(-r*Year_from_1950)), 
+                start = list(A = 90, B = 4.3, r = 0.025), 
+                data = fish_catch, trace = FALSE) 
+
+
+summary(fish_fit)
+
+
+A <- coef(fish_fit)[1]
+B <- coef(fish_fit)[2]
+r <- coef(fish_fit)[3]
+
+
+```
+
+```{r fig.align='center'}
+
+
+fish_pred <- A/(1+ B*exp(-r*fish_catch$Year_from_1950))
+
+pred_df <-  data.frame(year = fish_catch$year, fish_pred)
+
+
+ggplot(fish_catch, aes(x = year, y = wild)) +
+  geom_point( color = "steelblue") +
+  geom_line(data = pred_df, aes(x = year, y = fish_pred), color = "mediumaquamarine") +
+  labs(x = "Year", y = "Wild Catch (Million Tons)") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(hjust = 0.5)) +
+  ggtitle("Global Wild Fish Catch 1950 - 2010 with Parameterized Model")
+
+```
+
+
+### Task 3: Bootstrapped Confidence Interval for Proportions
+
+
+```{r fig.align='center'}
+
+nonbinary <- data.frame(n = seq(1,36), hostile = c(rep(1,22),rep(0,36-22)))
+
+
+test_non <- nonbinary %>% 
+  group_by(hostile) %>% 
+  count() %>% 
+  mutate(prop = nn/length(nonbinary$hostile))
+
+
+proportion <- function(x,i){
+  
+    sum(x[i] == 1)/length(x[i])
+  
+}
+
+hostile_boot <- boot(nonbinary$hostile, statistic = proportion, R=100000)
+hostile_boot_results <- data.frame(proportion = hostile_boot$t)
+hostile_boot
+
+
+ggplot(hostile_boot_results, aes(x = proportion)) +
+  geom_histogram(binwidth = 0.05, fill = "slategrey") +
+  theme_classic()
+
+
+mean_proportion <- mean(hostile_boot_results$proportion)
+high_end <- mean_proportion + 1.96*(sd(hostile_boot$t))
+low_end <- mean_proportion - 1.96*(sd(hostile_boot$t))
+
+mean_proportion
+high_end
+low_end
+
+```
+
+
+Data from 2014 UCSB Campus Climate Project Final Report (prepared by
+Rankin & Associates Consulting) show that 22 out of 36 surveyed UCSB community members (61%) identifying as nonbinary/genderqueer responded that they had personally experienced “exclusionary, offensive, hostile or intimidating conduct” (compared to 26% and 19% for those identifying as women and men, respectively).
+
+Using this reponse data (n=36) from nonbinary/genderqueer respondants, a 95% confidence interval was calculated by bootstrapping 100,000 times the proportion of repondants who respond yes. The 95% confidence interval ranges from 45.1% to 77.1%
+
+
+
+### Task 4: Watch 3 RStudio::conf talks
+
+
+Talk 1: Visualizing uncertainty with hypothetical outcomes plots
+
+Speaker: Claus Wilke
+
+Notes:
+
+- Learned how to generate animated graphics for uncertain analyses(Hypothetical Outcome Plots, HOPS). Different lines draws for each "draw" of an uncertainty analysis.
+
+- Psychologically it seems that no transition between different "runs" of an uncertainty analysis is easier to comprehend
+
+Question:
+
+In what circumstances do you think that showing an animated Hypothetical Outcome Plot is inappropriate for an audience?
+
+Talk 2: Melt the clock Tidy time series analysis 
+
+Speaker: Earo Wang
+
+Notes:
+
+- 2 different packages for working with time series in a tidy format (tsibble and fable). These packages are made to deal with the weird model formats of time series data. Looks super useful for making easy time series, I want to use it on my GP/shiny app data!
+
+-appears that you can still do the same forecasting analyses with her fable package, makes the syntax for models really easy!
+
+Question:
+
+Can you forecast data using these packages with data that incorporate multiple seasonalities? 
+
+Talk 3: Cultivating creativity in data work
+
+Speaker: Hilary Parker
+
+Notes:
+
+Question:
