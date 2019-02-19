@@ -2,7 +2,9 @@
 title: "ESM 244 Assignment 2"
 author: "Danny Ettelson"
 date: "2/19/2019"
-output: html_document
+output:
+  html_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -10,7 +12,68 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
+```{r loadlib, message=FALSE, warning=FALSE}
+
+library(tidyverse)
+library(lubridate)
+
+cetaceans <- read_csv("captive_cetacean.csv")
+fish_catch <- read_csv("fish_catch.csv")
+
+```
+
+###Task 1: Data wrangling and visualization - cetaceans in captivity
+
+
+
+```{r captivity, fig.align='center', fig.cap="Number of cetaceans born in captivity 1950 - 2018. Births where artificial insemination was used are shown in blue", message=FALSE, warning=FALSE}
+
+
+cetaceans$birthYear <- as.numeric(cetaceans$birthYear)
+
+
+cetaceans_fathers <- cetaceans %>% 
+  drop_na(father) %>% 
+  drop_na(birthYear) %>% 
+  group_by(father) %>% 
+  mutate(AI = grepl("A.I.", father))
+
+
+ggplot(cetaceans_fathers) +
+  geom_histogram(aes(x = birthYear, fill = AI), binwidth = 1) +
+  labs(x = "Birth Year", y = "Count")+
+  ggtitle("Cetacean Births in Captivity 1950 - 2018") +
+  #scale_fill_manual(labels = c("True", "False"),values = c("blue", "red")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(hjust = 0.5),legend.position="bottom") +
+  guides(fill=guide_legend(title="Use of Artificial Insemination")) 
+  #theme_classic()
+
+
+
+
+
+```
+
 ```{r}
+
+cetaceans$statusDate <- mdy(cetaceans$statusDate)
+
+cetaceans_release <- cetaceans %>% 
+  filter(status == "Released") %>% 
+  drop_na(statusDate) %>% 
+  mutate(year_released = year(statusDate))
+
+ggplot(cetaceans_release) +
+  geom_histogram(aes(x = year_released, fill = species), binwidth = 1) +
+  scale_fill_brewer(palette = "Set2") +  
+  labs(x = "Year Released", y = "Count") +
+  guides(fill=guide_legend(title="Species")) +
+  ggtitle("Cetacean Releases from Captivity") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "black"), plot.title = element_text(hjust = 0.5),legend.position="bottom")
+
+
 
 ```
 
